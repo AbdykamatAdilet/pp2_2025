@@ -1,0 +1,3 @@
+from Python_Functions_Tasks13 guess_the_number
+
+guess_the_number()
