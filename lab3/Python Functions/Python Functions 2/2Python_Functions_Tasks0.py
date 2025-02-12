@@ -1,4 +1,4 @@
-"""
+
 # Dictionary of movies
 
 movies = [
@@ -78,4 +78,3 @@ movies = [
 "category": "Romance"
 }
 ]
-"""
