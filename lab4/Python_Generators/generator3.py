@@ -3,4 +3,6 @@ def gen(n):
         if i%3==0 and i%4==0:
            yield i
 
-print(list(gen(20)))
+res = gen(20)
+for i in res:
+    print(i)

@@ -3,4 +3,6 @@ def gen(squareNum):
         sq = i*i
         yield sq
         
-print(list(gen(10)))
+res = gen(10)
+for i in res:
+    print(i)
