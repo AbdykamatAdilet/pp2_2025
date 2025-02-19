@@ -10,7 +10,7 @@ topology/pod-1/node-201/sys/phys-[eth1/35]                              inherit 
 
 import json
 
-data = json.load(open('sample-data.json', 'r'))
+data = json.load(open(r"C:\Users\HOME\Desktop\pp2_2025\lab4\Python_Json\sample-data.json", "r"))
 
 print('Interface Status')
 print('================================================================================')
