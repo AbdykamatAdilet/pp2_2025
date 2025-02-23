@@ -1,4 +1,9 @@
 import re
-txt = input("String: ")
-x = re.sub("[,. ]", ":" , txt)
-print(x)
+
+def space(i):
+    x = re.sub("[,. ]", ":" , i)
+    return x
+
+example = "You,me. III"
+res = space(example)
+print(res)
