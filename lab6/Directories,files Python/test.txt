@@ -1,0 +1,4 @@
+This is a sample text file.
+It contains multiple line exists
+You can use it to test reading and counting lines.
+Good luck with your exercises!
