@@ -1,8 +1,26 @@
 import os
 
-def list(path):
-    directories = [d for d in os.listdir(path) if os.path.isdir(os.path.join(path, d))]
-    files = [f for f in os.listdir(path) if os.path.isfile(os.path.join(path, f))]
-    return directories, files
+def list_directories(path):
+    print("Directories:")
+    for entry in os.listdir(path):
+        if os.path.isdir(os.path.join(path, entry)):
+            print(entry)
 
-print(list("."))
+def list_files(path):
+    print("Files:")
+    for entry in os.listdir(path):
+        if os.path.isfile(os.path.join(path, entry)):
+            print(entry)
+
+def list_all(path):
+    print("All directories and files:")
+    for entry in os.listdir(path):
+        print(entry)
+
+path = "."
+
+list_directories(path)
+print()
+list_files(path)
+print()
+list_all(path)

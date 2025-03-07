@@ -1,8 +1,16 @@
 import os
 
-def path(path):
+def check(path):
     if os.path.exists(path):
-        return os.path.dirname(path), os.path.basename(path)
-    return "Path does not exist"
+        print(f"The path '{path}' exists.")
+        
+        directory = os.path.dirname(path)
+        print(f"Directory portion: {directory}")
+        
+        filename = os.path.basename(path)
+        print(f"Filename portion: {filename}")
+    else:
+        print(f"The path '{path}' does not exist.")
 
-print(path("test.txt"))
+path = r"C:\Users\HOME\Desktop\pp2_2025\lab6\Directories,files Python\test.txt"
+check(path)
