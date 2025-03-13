@@ -2,7 +2,7 @@ import pygame
 
 pygame.init()
 
-w, h = 600, 600
+w, h = 800, 600
 screen = pygame.display.set_mode((w, h))
 clock = pygame.time.Clock()
 
