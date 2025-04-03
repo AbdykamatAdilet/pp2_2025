@@ -43,11 +43,7 @@ def main():
                     radius = 20
                     mode = eraser
                 else:
-                    if mode != eraser:
-                        radius = 2
-                    elif event.key == pygame.K_RETURN:
-                        radius = 2
-                        mode = white
+                    radius = 2
 
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 last_pos = pygame.mouse.get_pos()
