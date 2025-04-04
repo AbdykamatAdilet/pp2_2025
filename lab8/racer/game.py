@@ -107,7 +107,7 @@ while True:
         DISPLAYSURF.blit(entity.image, entity.rect)
         
 
-    #To be run if collision occurs between Player and Enemy
+    #To be run if collision occurs between Player and Enemy.
     if pygame.sprite.spritecollideany(P1, enemies):
           pygame.mixer.Sound('crash.wav').play()
           time.sleep(1)
