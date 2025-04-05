@@ -42,7 +42,7 @@ while True:
     screen.blit(mickey,mickeyrect)
     screen.blit(leftHand1,leftHandRect)
     screen.blit(rightHand1,rightHandRect) 
-    x-=0.6
+    x+=0.6
     pygame.display.update()
 
     clock.tick(10)

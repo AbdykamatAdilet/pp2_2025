@@ -32,6 +32,8 @@ coins_collected = 0
 coins_needed_for_speedup = 5
 sc = 0  # For tracking speed increase
 
+time = 10
+sec = 1
 # --- Classes ---
 
 class Enemy(pygame.sprite.Sprite):  # Enemy car class
@@ -127,7 +129,7 @@ while True:
             sys.exit()
 
     screen.blit(background, (0, 0))
-    scores = font_small.render(f"Score: {score}  Coins: {coins_collected}", True, BLACK)
+    scores = font_small.render(f"Score: {score}  Coins: {coins_collected} Timer:{time}", True, BLACK)
     screen.blit(scores, (10, 10))
 
     # Move and draw all objects
@@ -162,6 +164,8 @@ while True:
         time.sleep(2)
         pygame.quit()
         sys.exit()
+        
+        
 
     pygame.display.update()
     clock.tick(FPS)

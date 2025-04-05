@@ -78,7 +78,7 @@ while True:
 
     if snake[-1] == apple:
         apple = randrange(0, r, size), randrange(0, r, size)
-        length += 1
+        length += 2
         score += 1
         FPS += 0.5
 
