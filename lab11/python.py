@@ -6,17 +6,17 @@ def collecting_info_by_pattern(pattern):
     try:
         with psycopg2.connect(**config) as conn:
             with conn.cursor() as cur:
-                # Использование оператора LIKE для поиска подстроки
-                cur.execute("SELECT user_id, name, phone_number FROM phonebook WHERE name LIKE %s OR phone_number LIKE %s ORDER BY user_id", 
+                cur.execute("SELECT user_id, name, phone_number FROM phonebook WHERE name ILIKE %s OR phone_number ILIKE %s ORDER BY user_id", 
                             ('%' + pattern + '%', '%' + pattern + '%'))
                 rows = cur.fetchall()
-                print("Количество найденных записей: ", cur.rowcount)
-                # Ищет записи по частичному совпадению в имени или номере телефона
-                # Пример: шаблон "John" найдет "Johnny", "555" найдет "555-1234"
-                for row in rows:
-                    print(row)
+                if not rows:
+                    print("Нет записей, соответствующих запросу.")
+                else:
+                    print("Количество найденных записей: ", cur.rowcount)
+                    for row in rows:
+                        print(row)
     except (Exception, psycopg2.DatabaseError) as error:
-        print(error)
+        print(f"Ошибка: {error}")
 
 def insert_or_update_user(name, phone_number):
     config = load_config()
@@ -34,7 +34,7 @@ def insert_or_update_user(name, phone_number):
                 conn.commit()
                 print(f"Контакт {name} успешно добавлен или обновлен.")
     except (Exception, psycopg2.DatabaseError) as error:
-        print(error)
+        print(f"Ошибка: {error}")
 
 def insert_multiple_users(data_list):
     config = load_config()
@@ -44,6 +44,9 @@ def insert_multiple_users(data_list):
                 for item in data_list:
                     name = item[0]
                     phone_number = item[1]
+
+                    # Нормализация номера телефона (удаление всех нецифровых символов)
+                    phone_number = ''.join(filter(str.isdigit, phone_number))
 
                     # Проверка корректности номера телефона
                     if not phone_number.isdigit() or len(phone_number) != 10:
@@ -55,18 +58,15 @@ def insert_multiple_users(data_list):
                     count = cur.fetchone()[0]
 
                     if count > 0:
-                        # Если контакт существует, обновляем его номер телефона
                         cur.execute("UPDATE phonebook SET phone_number = %s WHERE name = %s", (phone_number, name))
                     else:
-                        # Если контакт не существует, вставляем новый контакт
                         cur.execute("INSERT INTO phonebook (name, phone_number) VALUES (%s, %s)", (name, phone_number))
 
                 conn.commit()
                 print("Контакты успешно добавлены или обновлены.")
     except (Exception, psycopg2.DatabaseError) as error:
-        print(error)
+        print(f"Ошибка: {error}")
 
-# Функция для получения данных с пагинацией (limit и offset)
 def collecting_info_with_pagination(limit, offset):
     config = load_config()
     try:
@@ -74,14 +74,15 @@ def collecting_info_with_pagination(limit, offset):
             with conn.cursor() as cur:
                 cur.execute("SELECT user_id, name, phone_number FROM phonebook ORDER BY user_id LIMIT %s OFFSET %s", (limit, offset))
                 rows = cur.fetchall()
-                print("Количество найденных записей: ", cur.rowcount)
-                for row in rows:
-                    print(row)
+                if not rows:
+                    print("Нет записей на данной странице.")
+                else:
+                    print("Количество найденных записей: ", cur.rowcount)
+                    for row in rows:
+                        print(row)
     except (Exception, psycopg2.DatabaseError) as error:
-        print(error)
+        print(f"Ошибка: {error}")
 
-
-# Функция для удаления данных по имени
 def delete_user_by_name(name):
     config = load_config()
     try:
@@ -91,9 +92,8 @@ def delete_user_by_name(name):
                 conn.commit()
                 print(f"Контакт с именем {name} успешно удален.")
     except (Exception, psycopg2.DatabaseError) as error:
-        print(error)
+        print(f"Ошибка: {error}")
 
-# Функция для удаления данных по номеру телефона
 def delete_user_by_phone(phone_number):
     config = load_config()
     try:
@@ -103,7 +103,7 @@ def delete_user_by_phone(phone_number):
                 conn.commit()
                 print(f"Контакт с номером {phone_number} успешно удален.")
     except (Exception, psycopg2.DatabaseError) as error:
-        print(error)
+        print(f"Ошибка: {error}")
 
 if __name__ == '__main__':
     operation = input("Выберите операцию:\n1 - Записать контакт\n2 - Обновить контакт\n3 - Пройтись по всем контактам\n4 - Удалить контакт\n5 - Записать несколько контактов : ")
@@ -111,7 +111,7 @@ if __name__ == '__main__':
     if operation == "1":
         name = input("Введите имя нового контакта: ")
         phone_number = input("Введите номер телефона нового контакта: ")
-        insert_or_update_user(first_name, phone_number)
+        insert_or_update_user(name, phone_number)
 
     elif operation == "2":
         name = input("Введите имя контакта для обновления: ")
