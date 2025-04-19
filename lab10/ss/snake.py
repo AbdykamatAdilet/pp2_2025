@@ -1,319 +1,200 @@
-import pygame as pg
-import psycopg2 as pgsql
-from sys import exit
-import random
-import time
-from pygame.math import Vector2 as vt
+import pygame 
+import random  
+import sys 
+import psycopg2 
 
-connection=pgsql.connect(host="localhost", dbname="postgres", user="postgres",
-                         password="1122", port=5432)
-cur=connection.cursor()
+pygame.init()
+SCREEN_WIDTH, SCREEN_HEIGHT = 600, 400
+GRID_SIZE = 20
+GRID_WIDTH = SCREEN_WIDTH // GRID_SIZE
+GRID_HEIGHT = SCREEN_HEIGHT // GRID_SIZE
+screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+pygame.display.set_caption("Змейка")
 
-cur.execute("""CREATE TABLE IF NOT EXISTS snakegame (
-    username VARCHAR(255),
-    user_score INT,
-    user_level INT
-);
+conn = psycopg2.connect(
+    dbname='postgres',
+    user='postgres',
+    password='1122',
+    host='localhost'
+)
+cursor = conn.cursor()
+
+# --- Создание таблиц, если их нет ---
+cursor.execute("""
+    CREATE TABLE IF NOT EXISTS users (
+        id SERIAL PRIMARY KEY,
+        user_name VARCHAR(255) UNIQUE
+    );
 """)
 
-#CONSTANTS
-cell_s=int(40)
-speed=200
-#------------
+cursor.execute("""
+    CREATE TABLE IF NOT EXISTS user_score (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER REFERENCES users(id),
+        score INTEGER,
+        level INTEGER
+    );
+""")
+conn.commit()
 
-pg.init()
-screen=pg.display.set_mode((cell_s*20,cell_s*20))
-pg.display.set_caption("snake")
-clock=pg.time.Clock()
-shashlyk=pg.image.load(r"C:\Users\HOME\Desktop\pp2_2025\lab10\ss\shashlyk.png").convert_alpha()
-qazy=pg.image.load(r"C:\Users\HOME\Desktop\pp2_2025\lab10\ss\qazy.png").convert_alpha()
-bg=pg.image.load(r"C:\Users\HOME\Desktop\pp2_2025\lab10\ss\bg.png").convert_alpha()
-bgdead=pg.image.load(r"C:\Users\HOME\Desktop\pp2_2025\lab10\ss\bgdead.png").convert_alpha()
-icon=pg.image.load(r"C:\Users\HOME\Desktop\pp2_2025\lab10\ss\icon.png").convert_alpha()
-pg.display.set_icon(icon)
-game_font = pg.font.Font(r"C:\Users\HOME\Desktop\pp2_2025\lab10\ss\Minecraft.ttf", 25)
+WHITE = (255, 255, 255)
+BLACK = (0, 0, 0)
+RED   = (255, 0, 0)
 
-qazymode=1
-welcomescreen=True
-timer=0
-CNTSHASHLYK=0
-CNTQAZY=0
+# --- Функция получения или создания игрока ---
+def get_or_create_user(username):
+    cursor.execute("SELECT id FROM users WHERE user_name = %s;", (username,))
+    row = cursor.fetchone()
+    if row:
+        user_id = row[0]
+        cursor.execute("SELECT level FROM user_score WHERE user_id = %s ORDER BY id DESC LIMIT 1;", (user_id,))
+        level_row = cursor.fetchone()
+        return user_id, level_row[0] if level_row else 1
+    else:
+        cursor.execute("INSERT INTO users (user_name) VALUES (%s) RETURNING id;", (username,))
+        user_id = cursor.fetchone()[0]
+        conn.commit()
+        return user_id, 1
 
-listofx=list(range(0,19))
-listofy=list(range(0,19))
+# --- Сохраняем счёт и уровень в таблицу ---
+def save_score(user_id, score, level):
+    cursor.execute("INSERT INTO user_score (user_id, score, level) VALUES (%s, %s, %s);", (user_id, score, level))
+    conn.commit()
 
-
-#CLASSES
-class FRUIT:
+class Snake:
     def __init__(self):
-        self.newpos()
-    def draw_f(self):
-        fruit_rect=pg.Rect(self.pos.x*cell_s, self.pos.y*cell_s, cell_s, cell_s)
-        if qazymode==0:
-            screen.blit(qazy,fruit_rect)
-        else:
-            screen.blit(shashlyk,fruit_rect)
-    def newpos(self):
-        global qazymode
-        qazymode =random.randint(0,5)
-        self.x=random.choice(listofx)
-        self.y=random.choice(listofy)
-        self.pos=vt(self.x, self.y)
+        self.body = [(GRID_WIDTH // 2, GRID_HEIGHT // 2)]
+        self.direction = (1, 0)
+        self.player_name = ""
+        self.user_id = None
+        self.paused = False
 
-class SNAKE:
+    def get_player_name(self):
+        input_box = pygame.Rect(SCREEN_WIDTH // 2 - 100, SCREEN_HEIGHT // 2 - 25, 200, 50)
+        font = pygame.font.Font(None, 32)
+        color_inactive = pygame.Color('lightskyblue3')
+        color_active = pygame.Color('dodgerblue2')
+        color = color_inactive
+        active = False
+        text = ''
+        done = False
+
+        while not done:
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    pygame.quit()
+                    sys.exit()
+                if event.type == pygame.MOUSEBUTTONDOWN:
+                    active = input_box.collidepoint(event.pos)
+                    color = color_active if active else color_inactive
+                if event.type == pygame.KEYDOWN:
+                    if active:
+                        if event.key == pygame.K_RETURN:
+                            done = True
+                        elif event.key == pygame.K_BACKSPACE:
+                            text = text[:-1]
+                        else:
+                            text += event.unicode
+
+            screen.fill(BLACK)
+            txt_surface = font.render(text, True, color)
+            input_box.w = max(200, txt_surface.get_width() + 10)
+            screen.blit(txt_surface, (input_box.x + 5, input_box.y + 5))
+            pygame.draw.rect(screen, color, input_box, 2)
+            pygame.display.flip()
+
+        self.player_name = text
+        self.user_id, loaded_level = get_or_create_user(self.player_name)
+        return loaded_level
+
+    def move(self):
+        global score, level, speed
+        if self.paused:
+            return True
+
+        head = self.body[0]
+        new_head = ((head[0] + self.direction[0]) % GRID_WIDTH,
+                    (head[1] + self.direction[1]) % GRID_HEIGHT)
+
+        if new_head in self.body[1:] or new_head in walls:
+            return False
+
+        self.body.insert(0, new_head)
+        if new_head == food.position:
+            score += 1
+            if score % 3 == 0:
+                level += 1
+                speed += 1
+            food.spawn()
+        else:
+            self.body.pop()
+        return True
+
+    def change_direction(self, direction):
+        if (direction[0] * -1, direction[1] * -1) != self.direction:
+            self.direction = direction
+
+    def save_progress(self):
+        save_score(self.user_id, score, level)
+        print(f"Прогресс {self.player_name} сохранён!")
+
+class Food:
     def __init__(self):
-        self.body=[vt(7,10), vt(6,10), vt(5,10)]
-        self.dirc=vt(1,0)
-        self.add_block=False
-        self.head_up = pg.image.load(r"C:\Users\HOME\Desktop\pp2_2025\lab10\ss\head_up.png").convert_alpha()
-        self.head_down = pg.image.load(r"C:\Users\HOME\Desktop\pp2_2025\lab10\ss\head_down.png").convert_alpha()
-        self.head_right = pg.image.load(r"C:\Users\HOME\Desktop\pp2_2025\lab10\ss\head_right.png").convert_alpha()
-        self.head_left = pg.image.load(r"C:\Users\HOME\Desktop\pp2_2025\lab10\ss\head_left.png").convert_alpha()
-		
-        self.tail_up = pg.image.load(r"C:\Users\HOME\Desktop\pp2_2025\lab10\ss\tail_up.png").convert_alpha()
-        self.tail_down = pg.image.load(r"C:\Users\HOME\Desktop\pp2_2025\lab10\ss\tail_down.png").convert_alpha()
-        self.tail_right = pg.image.load(r"C:\Users\HOME\Desktop\pp2_2025\lab10\ss\tail_right.png").convert_alpha()
-        self.tail_left = pg.image.load(r"C:\Users\HOME\Desktop\pp2_2025\lab10\ss\tail_left.png").convert_alpha()
+        self.position = (0, 0)
+        self.spawn()
 
-        self.body_vertical = pg.image.load(r"C:\Users\HOME\Desktop\pp2_2025\lab10\ss\body_vertical.png").convert_alpha()
-        self.body_horizontal = pg.image.load(r"C:\Users\HOME\Desktop\pp2_2025\lab10\ss\body_horizontal.png").convert_alpha()
+    def spawn(self):
+        while True:
+            pos = (random.randint(1, GRID_WIDTH - 2), random.randint(1, GRID_HEIGHT - 2))
+            if pos not in snake.body and pos not in walls:
+                self.position = pos
+                break
 
-        self.body_tr = pg.image.load(r"C:\Users\HOME\Desktop\pp2_2025\lab10\ss\body_tr.png").convert_alpha()
-        self.body_tl = pg.image.load(r"C:\Users\HOME\Desktop\pp2_2025\lab10\ss\body_tl.png").convert_alpha()
-        self.body_br = pg.image.load(r"C:\Users\HOME\Desktop\pp2_2025\lab10\ss\body_br.png").convert_alpha()
-        self.body_bl = pg.image.load(r"C:\Users\HOME\Desktop\pp2_2025\lab10\ss\body_bl.png").convert_alpha()
-        self.crunch_sound = pg.mixer.Sound(r"C:\Users\HOME\Desktop\pp2_2025\lab10\ss\se_fruit.mp3")
-    
-    def draw_s(self):
-        self.update_head_graphics()
-        self.update_tail_graphics()
+walls = [(0, i) for i in range(GRID_HEIGHT)] + [(GRID_WIDTH - 1, i) for i in range(GRID_HEIGHT)] + \
+        [(i, 0) for i in range(GRID_WIDTH)] + [(i, GRID_HEIGHT - 1) for i in range(GRID_WIDTH)]
 
-        for index,block in enumerate(self.body):
-            x_pos = int(block.x*cell_s)
-            y_pos = int(block.y*cell_s)
-            block_rect = pg.Rect(x_pos,y_pos,cell_s,cell_s)
-            
-            if index == 0:
-                screen.blit(self.head,block_rect)
-            elif index == len(self.body) - 1:
-                screen.blit(self.tail,block_rect)
-            else:
-                previous_block = self.body[index + 1] - block
-                next_block = self.body[index - 1] - block
-                if previous_block.x == next_block.x:
-                     screen.blit(self.body_vertical,block_rect)
-                elif previous_block.y == next_block.y:
-                    screen.blit(self.body_horizontal,block_rect)
-                else:
-                    if previous_block.x == -1 and next_block.y == -1 or previous_block.y == -1 and next_block.x == -1:
-                        screen.blit(self.body_tl,block_rect)
-                    elif previous_block.x == -1 and next_block.y == 1 or previous_block.y == 1 and next_block.x == -1:
-                        screen.blit(self.body_bl,block_rect)
-                    elif previous_block.x == 1 and next_block.y == -1 or previous_block.y == -1 and next_block.x == 1:
-                        screen.blit(self.body_tr,block_rect)
-                    elif previous_block.x == 1 and next_block.y == 1 or previous_block.y == 1 and next_block.x == 1:
-                        screen.blit(self.body_br,block_rect)
-    
-    def update_head_graphics(self):
-        head_relation = self.body[1] - self.body[0]
-        if head_relation == vt(1,0): self.head = self.head_left
-        elif head_relation == vt(-1,0): self.head = self.head_right
-        elif head_relation == vt(0,1): self.head = self.head_up
-        elif head_relation == vt(0,-1): self.head = self.head_down
+snake = Snake()
+loaded_level = snake.get_player_name()
+food = Food()
+score, level, speed = 0, loaded_level, 10 + (loaded_level - 1) * 2
 
-    def update_tail_graphics(self):
-        tail_relation = self.body[-2] - self.body[-1]
-        if tail_relation == vt(1,0): self.tail = self.tail_left
-        elif tail_relation == vt(-1,0): self.tail = self.tail_right
-        elif tail_relation == vt(0,1): self.tail = self.tail_up
-        elif tail_relation == vt(0,-1): self.tail = self.tail_down
-        
-    def move_s(self):
-        if self.add_block:
-            body2=self.body[:]
-            body2.insert(0, body2[0]+self.dirc)
-            self.body=body2
-            self.add_block=False
-        else:
-            body2=self.body[:-1]
-            body2.insert(0, body2[0]+self.dirc)
-            self.body=body2
-        
-    def newblock(self):
-        self.add_block=True
+clock = pygame.time.Clock()
+running = True
+while running:
+    screen.fill(BLACK)
 
-    def play_crunch_sound(self):
-        self.crunch_sound.play()
-                
-    def reset(self):
-        self.body = [vt(5,10),vt(4,10),vt(3,10)]
-        self.direction = vt(0,0)
+    for event in pygame.event.get():
+        if event.type == pygame.QUIT:
+            running = False
+        elif event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_UP:
+                snake.change_direction((0, -1))
+            elif event.key == pygame.K_DOWN:
+                snake.change_direction((0, 1))
+            elif event.key == pygame.K_LEFT:
+                snake.change_direction((-1, 0))
+            elif event.key == pygame.K_RIGHT:
+                snake.change_direction((1, 0))
+            elif event.key == pygame.K_SPACE:
+                snake.paused = not snake.paused
+            elif event.key == pygame.K_s:
+                snake.save_progress()
 
+    if not snake.move():
+        running = False
 
-class MAIN:
-    def __init__(self):
-        self.snake=SNAKE()
-        self.fruit=FRUIT()
-        self.dead=False
-        self.dead_sound = pg.mixer.Sound(r"C:\Users\HOME\Desktop\pp2_2025\lab10\ss\se_dead.mp3")
+    for segment in snake.body:
+        pygame.draw.rect(screen, WHITE, (segment[0] * GRID_SIZE, segment[1] * GRID_SIZE, GRID_SIZE, GRID_SIZE))
 
-    def upd(self):
-        self.snake.move_s()
-        self.check()
-        self.check_death()
-        listofx=list(range(0,19))
-        listofy=list(range(0,19))
-        for i in self.snake.body:
-            if i.x in listofx:
-                listofx.remove(i.x)
-            if i.y in listofy:
-                listofy.remove(i.y)
+    pygame.draw.rect(screen, RED, (food.position[0] * GRID_SIZE, food.position[1] * GRID_SIZE, GRID_SIZE, GRID_SIZE))
 
+    font = pygame.font.SysFont(None, 25)
+    text = font.render(f"Счёт: {score}   Уровень: {level}", True, WHITE)
+    screen.blit(text, (10, 10))
 
-    
-    def play_dead_sound(self):
-        self.dead_sound.play()
+    pygame.display.flip()
+    clock.tick(speed)
 
-    def draw_all(self):
-        if welcomescreen:
-            screen.blit(bg,(0,0))
-        elif not self.dead:
-            screen.blit(bg,(0,0))
-            self.fruit.draw_f()
-            self.snake.draw_s()
-            self.draw_score()
-        else:
-            screen.blit(bgdead,(0,0))
-            text = "SCORE:"+str(CNTSHASHLYK+CNTQAZY*5)
-            surface = game_font.render(text,True,(255,255,255))
-            score_rect = surface.get_rect(center = (10*cell_s,15*cell_s))
-            text2 = "LEVEL:"+str(1+(CNTSHASHLYK+CNTQAZY)//10)
-            surface2 = game_font.render(text2,True,(255,255,255))
-            score_rect2 = surface2.get_rect(center = (10*cell_s,16*cell_s))
-            screen.blit(surface,score_rect)
-            screen.blit(surface2,score_rect2)
-
-
-    def check(self):
-        if self.fruit.pos==self.snake.body[0]:
-            if qazymode==0:
-                global CNTQAZY
-                CNTQAZY+=1
-            else:
-                global CNTSHASHLYK
-                CNTSHASHLYK+=1
-            self.fruit.newpos()
-            self.snake.newblock()
-            self.snake.play_crunch_sound()
-    def check_death(self):
-        if not 0<=self.snake.body[0].x<=19 or not 0<=self.snake.body[0].y<=19:
-            self.endthegame()
-        for block in self.snake.body[1:]:
-            if block.x==self.snake.body[0].x and block.y==self.snake.body[0].y:
-                self.endthegame() 
-
-    def endthegame(self):
-        self.play_dead_sound()
-        self.dead=True
-        update(user)
-    		
-    def draw_score(self):
-        level_text="Your level is: "+str(1+(CNTSHASHLYK+CNTQAZY)//10)
-        level_surface=game_font.render(level_text,True,(0,0,0))
-        level_rect = level_surface.get_rect(center = (10*cell_s,20))
-
-        score_text = str(CNTSHASHLYK+CNTQAZY*5)
-        score_surface = game_font.render(score_text,True,(0,0,0))
-        score_x = int(cell_s * 20 - 60)
-        score_y = int(cell_s * 20 - 40)
-        score_rect = score_surface.get_rect(center = (score_x,score_y))
-        apple_rect = shashlyk.get_rect(midright = (score_rect.left,score_rect.centery))
-        bg_rect = pg.Rect(apple_rect.left,apple_rect.top,apple_rect.width + score_rect.width + 6,apple_rect.height)
-        pg.draw.rect(screen,(255,255,255),bg_rect)
-        screen.blit(score_surface,score_rect)
-        screen.blit(shashlyk,apple_rect)
-        screen.blit(level_surface,level_rect)
-        pg.draw.rect(screen,(0,0,0),bg_rect,2)
-
-
-
-#-----------------------------------
-
-
-def insert(newuser):
-    cur.execute("""INSERT INTO snakegame VALUES ('{}',0,0)""".format(newuser))
-
-def update(curuser):
-    cur.execute("SELECT * FROM snakegame WHERE username='{}'".format(curuser))
-    data=cur.fetchone()
-    cur.execute("""UPDATE snakegame
-    SET user_score={}, user_level={}
-    WHERE username='{}'
-    """.format(max(data[1],CNTSHASHLYK+CNTQAZY*5),max(data[2],1+(CNTSHASHLYK+CNTQAZY)//10),curuser))
-    connection.commit()
-
-
-print("Enter your username:")
-user=input()
-cur.execute("SELECT count(*) FROM snakegame WHERE username='{}'".format(user))
-if cur.fetchone()[0]==0:
-    insert(user)
-    connection.commit()
-else:
-    cur.execute("SELECT * FROM snakegame WHERE username='{}'".format(user))
-    data=cur.fetchone()
-    print("User's max score:{}".format(data[1]))
-    print("User's max level:{}".format(data[2]))
-welcomescreen=False
-
-print("game will start in:")
-
-for i in range(1,4):
-    print(i)
-    time.sleep(1)
-print("go!")
-
-
-SCREEN_UPDATE=pg.USEREVENT
-pg.time.set_timer(SCREEN_UPDATE, speed)
-
-
-main=MAIN()
-
-while(True):
-    for event in pg.event.get():
-        if event.type==pg.QUIT:
-            pg.quit()
-            connection.commit()
-            cur.close()
-            connection.close()
-            exit()
-        if event.type==SCREEN_UPDATE and main.dead==False and welcomescreen==False:
-            main.upd()
-        if event.type==pg.KEYDOWN:
-            if event.key==pg.K_UP:
-                if main.snake.dirc.y!=1:
-                    main.snake.dirc=vt(0, -1)
-            if event.key==pg.K_DOWN:
-                if main.snake.dirc.y!=-1:
-                    main.snake.dirc=vt(0, 1)
-            if event.key==pg.K_LEFT:
-                if main.snake.dirc.x!=1:
-                    main.snake.dirc=vt(-1, 0)
-            if event.key==pg.K_RIGHT:
-                if main.snake.dirc.x!=-1:
-                    main.snake.dirc=vt(1, 0)
-            if event.key==pg.K_SPACE:
-                update(user)
-
-    if qazymode==0:
-        timer+=1
-    if qazymode==0 and timer>=500:
-        qazymode=random.randint(1,5)
-        timer=0
-            
-    speed=200-((len(main.snake.body) - 3)//10)*5
-    screen.fill((25,24,56))
-    main.draw_all()
-    pg.display.update()
-    clock.tick(60)
+snake.save_progress()
+pygame.quit()
+conn.close()
